@@ -1,11 +1,15 @@
 import { Modal, App, Setting } from "obsidian";
 import BastionPlugin from "../main";
 import { Bastion, BasilionFacility } from "../types";
+import { CompendiumParser } from "../utils/compendium-parser";
+import { FacilityEditorModal } from "./facility-editor-modal";
+import { BastionEventModal } from "./bastion-event-modal";
 
 export class BastionModal extends Modal {
   plugin: BastionPlugin;
   bastion: Bastion | null;
   onSave: (bastion: Bastion) => void;
+  compendiumFacilities: BasilionFacility[] = [];
 
   constructor(app: App, plugin: BastionPlugin, bastionId?: string) {
     super(app);
@@ -33,7 +37,19 @@ export class BastionModal extends Modal {
     };
   }
 
-  onOpen() {
+  async onOpen() {
+    // Load compendium facilities if auto-load is enabled
+    if (this.plugin.dataManager.getSettings().autoLoadRooms) {
+      const parser = new CompendiumParser(this.app);
+      const compPath = this.plugin.dataManager.getSettings().compendiumPath;
+      this.compendiumFacilities = await parser.parseFacilities(compPath);
+    }
+
+    // Call the display method
+    this.display();
+  }
+
+  display() {
     const { contentEl } = this;
     contentEl.empty();
     contentEl.createEl("h2", { text: this.bastion?.id.includes("bastion-") && !this.plugin.dataManager.getBastion(this.bastion.id) ? "New Bastion" : "Edit Bastion" });
@@ -64,14 +80,43 @@ export class BastionModal extends Modal {
 
     new Setting(basicSection)
       .setName("Level")
-      .addSlider((slider) =>
-        slider
-          .setLimits(1, 20, 1)
-          .setValue(this.bastion?.level || 5)
-          .onChange((value) => {
-            if (this.bastion) this.bastion.level = value;
-          })
-      );
+      .then((setting) => {
+        const btn_dec = setting.controlEl.createEl("button", { cls: "btn-small", text: "−" });
+        const input = setting.controlEl.createEl("input", {
+          cls: "btn-num-input",
+          type: "number",
+          value: String(this.bastion?.level || 5),
+        }) as HTMLInputElement;
+        input.min = "1";
+        input.max = "20";
+        const btn_inc = setting.controlEl.createEl("button", { cls: "btn-small", text: "+" });
+
+        setting.controlEl.style.display = "flex";
+        setting.controlEl.style.gap = "8px";
+        setting.controlEl.style.alignItems = "center";
+
+        const updateValue = (newVal: number) => {
+          if (this.bastion) {
+            this.bastion.level = Math.max(1, Math.min(20, newVal));
+            input.value = String(this.bastion.level);
+          }
+        };
+
+        btn_dec.onclick = () => {
+          updateValue((this.bastion?.level || 5) - 1);
+        };
+
+        btn_inc.onclick = () => {
+          updateValue((this.bastion?.level || 5) + 1);
+        };
+
+        input.onchange = () => {
+          const val = parseInt(input.value, 10);
+          if (!isNaN(val)) {
+            updateValue(val);
+          }
+        };
+      });
 
     new Setting(basicSection)
       .setName("Description")
@@ -89,13 +134,42 @@ export class BastionModal extends Modal {
 
     new Setting(resourcesSection)
       .setName("Bastion Defenders")
-      .addText((text) =>
-        text
-          .setValue((this.bastion?.defenders || 0).toString())
-          .onChange((value) => {
-            if (this.bastion) this.bastion.defenders = parseInt(value) || 0;
-          })
-      );
+      .then((setting) => {
+        const btn_dec = setting.controlEl.createEl("button", { cls: "btn-small", text: "−" });
+        const input = setting.controlEl.createEl("input", {
+          cls: "btn-num-input",
+          type: "number",
+          value: String(this.bastion?.defenders || 0),
+        }) as HTMLInputElement;
+        input.min = "0";
+        const btn_inc = setting.controlEl.createEl("button", { cls: "btn-small", text: "+" });
+
+        setting.controlEl.style.display = "flex";
+        setting.controlEl.style.gap = "8px";
+        setting.controlEl.style.alignItems = "center";
+
+        const updateValue = (newVal: number) => {
+          if (this.bastion) {
+            this.bastion.defenders = Math.max(0, newVal);
+            input.value = String(this.bastion.defenders);
+          }
+        };
+
+        btn_dec.onclick = () => {
+          updateValue((this.bastion?.defenders || 0) - 1);
+        };
+
+        btn_inc.onclick = () => {
+          updateValue((this.bastion?.defenders || 0) + 1);
+        };
+
+        input.onchange = () => {
+          const val = parseInt(input.value, 10);
+          if (!isNaN(val)) {
+            updateValue(val);
+          }
+        };
+      });
 
     new Setting(resourcesSection)
       .setName("Gold (gp)")
@@ -115,34 +189,180 @@ export class BastionModal extends Modal {
     const addFacilityBtn = facilitiesSection.createEl("button", { cls: "bastion-btn", text: "Add Facility" });
     addFacilityBtn.onclick = () => {
       if (this.bastion) {
-        const newFacility: BasilionFacility = {
-          id: `facility-${Date.now()}`,
-          name: "New Facility",
-          type: "basic",
-          spaceType: "Roomy",
-          size: 16,
-          isUpgraded: false,
-          description: "",
-          availableOrders: [],
-          notes: "",
+        // Show selection interface
+        const selectEl = facilitiesSection.createEl("div", { cls: "bastion-facility-select" });
+        
+        // Custom name input
+        selectEl.createEl("label", { text: "Custom Facility Name (optional):" });
+        const customInput = selectEl.createEl("input", {
+          type: "text",
+          placeholder: "Leave blank to choose from compendium",
+        }) as HTMLInputElement;
+        
+        const createCustomBtn = selectEl.createEl("button", { text: "Create Custom", cls: "bastion-btn-small" });
+        createCustomBtn.onclick = () => {
+          if (customInput.value.trim()) {
+            const newFacility: BasilionFacility = {
+              id: `facility-${Date.now()}`,
+              name: customInput.value.trim(),
+              type: "basic",
+              spaceType: "Roomy",
+              size: 16,
+              isUpgraded: false,
+              description: "",
+              availableOrders: [],
+              notes: "Custom facility",
+              hirelings: 1,
+            };
+            this.bastion?.facilities.push(newFacility);
+            selectEl.remove();
+            // Open editor for custom facility
+            new FacilityEditorModal(this.app, this.plugin, newFacility, (updated) => {
+              Object.assign(newFacility, updated);
+            }).open();
+            this.display();
+          }
         };
-        this.bastion.facilities.push(newFacility);
-        this.onOpen(); // Refresh modal
+        
+        // Compendium selection
+        if (this.compendiumFacilities.length > 0) {
+          selectEl.createEl("hr");
+          selectEl.createEl("label", { text: "Or select from compendium:" });
+          
+          // Filter facilities based on level requirement
+          const restrict = this.plugin.dataManager.getSettings().restrictToLevelRequirements;
+          const bastionLevel = this.bastion.level;
+          const availableFacilities = restrict
+            ? this.compendiumFacilities.filter((f) => !f.minLevel || f.minLevel <= bastionLevel)
+            : this.compendiumFacilities;
+          
+          // Sort by level
+          const sorted = availableFacilities.sort((a, b) => (a.minLevel || 0) - (b.minLevel || 0));
+          
+          const dropdown = selectEl.createEl("select");
+          
+          sorted.forEach((facility) => {
+            const levelStr = facility.minLevel ? ` (Level ${facility.minLevel})` : " (Any Level)";
+            dropdown.createEl("option", { text: facility.name + levelStr, value: facility.id });
+          });
+          
+          const selectCompendiumBtn = selectEl.createEl("button", { text: "Add Selected", cls: "bastion-btn-small" });
+          selectCompendiumBtn.onclick = () => {
+            const selectedId = dropdown.value;
+            const selected = this.compendiumFacilities.find((f) => f.id === selectedId);
+            if (selected) {
+              const newFacility = JSON.parse(JSON.stringify(selected));
+              newFacility.id = `facility-${Date.now()}`;
+              this.bastion?.facilities.push(newFacility);
+              selectEl.remove();
+              this.display();
+            }
+          };
+        } else {
+          selectEl.createEl("p", { text: "No compendium facilities loaded. Create a custom facility instead." });
+        }
       }
     };
 
     this.bastion?.facilities.forEach((facility: BasilionFacility, index: number) => {
       const facilityEl = facilitiesSection.createEl("div", { cls: "bastion-facility-item" });
-      facilityEl.createEl("strong", { text: facility.name });
-      facilityEl.createEl("button", { cls: "bastion-btn-small", text: "Edit" }).onclick = () => {
-        // Open facility editor
+      
+      const infoEl = facilityEl.createEl("div", { cls: "bastion-facility-info" });
+      infoEl.createEl("strong", { text: facility.name });
+      infoEl.createEl("span", { cls: "bastion-facility-meta", text: `${facility.type} • ${facility.spaceType}${facility.isUpgraded ? " (Upgraded)" : ""}` });
+      
+      const actionsEl = facilityEl.createEl("div", { cls: "bastion-facility-actions" });
+      
+      actionsEl.createEl("button", { cls: "bastion-btn-small", text: "Edit" }).onclick = () => {
+        new FacilityEditorModal(this.app, this.plugin, facility, (updated) => {
+          Object.assign(facility, updated);
+          this.display();
+        }).open();
       };
-      facilityEl.createEl("button", { cls: "bastion-btn-small", text: "Remove" }).onclick = () => {
+
+      // Show enlarge button for basic facilities
+      if (facility.type === "basic" && facility.spaceType !== "Vast") {
+        const enlargeText = facility.spaceType === "Cramped" ? "To Roomy" : "To Vast";
+        actionsEl.createEl("button", { cls: "bastion-btn-small", text: `Enlarge: ${enlargeText}` }).onclick = () => {
+          if (facility.spaceType === "Cramped") {
+            facility.spaceType = "Roomy";
+            facility.size = 16;
+          } else if (facility.spaceType === "Roomy") {
+            facility.spaceType = "Vast";
+            facility.size = 36;
+          }
+          this.display();
+        };
+      }
+
+      actionsEl.createEl("button", { cls: "bastion-btn-small", text: "Remove" }).onclick = () => {
         if (this.bastion) {
           this.bastion.facilities.splice(index, 1);
-          this.onOpen(); // Refresh modal
+          this.display();
         }
       };
+    });
+
+    // Orders Section
+    const ordersSection = contentEl.createEl("div", { cls: "bastion-modal-section" });
+    ordersSection.createEl("h3", { text: "Issue Orders" });
+    
+    const ordersButtonsEl = ordersSection.createEl("div");
+    ordersButtonsEl.style.display = "flex";
+    ordersButtonsEl.style.flexWrap = "wrap";
+    ordersButtonsEl.style.gap = "8px";
+    
+    const orders: Array<{ name: string; action: () => void }> = [
+      {
+        name: "Maintain",
+        action: () => {
+          new BastionEventModal(this.app, this.plugin, this.bastion!).open();
+        },
+      },
+      {
+        name: "Recruit",
+        action: () => {
+          alert("Recruit: Roll for new hireling availability");
+        },
+      },
+      {
+        name: "Trade",
+        action: () => {
+          alert("Trade: Gain resources from trade");
+        },
+      },
+      {
+        name: "Craft",
+        action: () => {
+          alert("Craft: Create items in your facilities");
+        },
+      },
+      {
+        name: "Research",
+        action: () => {
+          alert("Research: Gain arcane knowledge");
+        },
+      },
+      {
+        name: "Empower",
+        action: () => {
+          alert("Empower: Strengthen defenses or facilities");
+        },
+      },
+      {
+        name: "Harvest",
+        action: () => {
+          alert("Harvest: Gather resources from your facilities");
+        },
+      },
+    ];
+    
+    orders.forEach((order) => {
+      const btn = ordersButtonsEl.createEl("button", {
+        cls: "bastion-btn-small",
+        text: order.name,
+      });
+      btn.onclick = order.action;
     });
 
     // Buttons

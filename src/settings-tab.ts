@@ -46,6 +46,30 @@ export class BastionSettingsTab extends PluginSettingTab {
           })
       );
 
+    new Setting(containerEl)
+      .setName("Restrict to Level Requirements")
+      .setDesc("Only show facilities your bastion level can support")
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.dataManager.getSettings().restrictToLevelRequirements)
+          .onChange(async (value) => {
+            this.plugin.dataManager.updateSettings({ restrictToLevelRequirements: value });
+            await this.plugin.dataManager.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Restrict Max Special Facilities")
+      .setDesc("Limit number of special facilities based on bastion level (DMG rules)")
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.dataManager.getSettings().restrictMaxSpecialFacilities)
+          .onChange(async (value) => {
+            this.plugin.dataManager.updateSettings({ restrictMaxSpecialFacilities: value });
+            await this.plugin.dataManager.saveSettings();
+          })
+      );
+
     // Tracking Options
     const trackingDesc = containerEl.createEl("div");
     trackingDesc.createEl("h3", { text: "Tracking Options" });
@@ -89,15 +113,45 @@ export class BastionSettingsTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("Turn Frequency (days)")
       .setDesc("How many in-game days between bastion turns")
-      .addSlider((slider) =>
-        slider
-          .setLimits(1, 30, 1)
-          .setValue(this.plugin.dataManager.getSettings().turnFrequencyDays)
-          .onChange(async (value) => {
-            this.plugin.dataManager.updateSettings({ turnFrequencyDays: value });
-            await this.plugin.dataManager.saveSettings();
-          })
-      );
+      .then((setting) => {
+        const btn_dec = setting.controlEl.createEl("button", { cls: "btn-small", text: "−" });
+        const input = setting.controlEl.createEl("input", {
+          cls: "btn-num-input",
+          type: "number",
+          value: String(this.plugin.dataManager.getSettings().turnFrequencyDays),
+        }) as HTMLInputElement;
+        input.min = "1";
+        input.max = "30";
+        const btn_inc = setting.controlEl.createEl("button", { cls: "btn-small", text: "+" });
+
+        setting.controlEl.style.display = "flex";
+        setting.controlEl.style.gap = "8px";
+        setting.controlEl.style.alignItems = "center";
+
+        const updateValue = async (newVal: number) => {
+          const clamped = Math.max(1, Math.min(30, newVal));
+          this.plugin.dataManager.updateSettings({ turnFrequencyDays: clamped });
+          await this.plugin.dataManager.saveSettings();
+          input.value = String(clamped);
+        };
+
+        btn_dec.onclick = async () => {
+          const current = this.plugin.dataManager.getSettings().turnFrequencyDays;
+          await updateValue(current - 1);
+        };
+
+        btn_inc.onclick = async () => {
+          const current = this.plugin.dataManager.getSettings().turnFrequencyDays;
+          await updateValue(current + 1);
+        };
+
+        input.onchange = async () => {
+          const val = parseInt(input.value, 10);
+          if (!isNaN(val)) {
+            await updateValue(val);
+          }
+        };
+      });
 
     // Data Management
     const dataDesc = containerEl.createEl("div");

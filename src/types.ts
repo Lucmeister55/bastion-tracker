@@ -30,6 +30,7 @@ export interface BasilionFacility {
   description: string;
   availableOrders: Order[];
   notes: string;
+  hirelings?: number; // Number of hirelings assigned to this facility
 }
 
 export interface Hireling {
@@ -81,6 +82,8 @@ export interface BastionSettings {
   trackGold: boolean;
   trackTurns: boolean;
   turnFrequencyDays: number;
+  restrictToLevelRequirements: boolean;
+  restrictMaxSpecialFacilities: boolean;
 }
 
 export const DEFAULT_BASTIONS_SETTINGS: BastionSettings = {
@@ -90,4 +93,6 @@ export const DEFAULT_BASTIONS_SETTINGS: BastionSettings = {
   trackGold: true,
   trackTurns: true,
   turnFrequencyDays: 7,
+  restrictToLevelRequirements: true,
+  restrictMaxSpecialFacilities: true,
 };

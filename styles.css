@@ -48,6 +48,86 @@
 	background-color: var(--background-secondary);
 }
 
+/* Discrete number controls */
+.btn-small {
+	padding: 4px 8px;
+	min-width: 32px;
+	border: 1px solid var(--background-secondary-alt);
+	border-radius: 3px;
+	cursor: pointer;
+	font-size: 14px;
+	font-weight: bold;
+	background-color: var(--background-secondary);
+	transition: background-color 0.15s;
+}
+
+.btn-small:hover {
+	background-color: var(--background-secondary-alt);
+}
+
+.btn-num-display {
+	min-width: 30px;
+	text-align: center;
+	font-weight: bold;
+	font-size: 16px;
+}
+
+.btn-num-input {
+	width: 50px;
+	padding: 4px 6px;
+	border: 1px solid var(--background-secondary-alt);
+	border-radius: 3px;
+	background-color: var(--background-primary);
+	color: var(--text-normal);
+	font-size: 16px;
+	font-weight: bold;
+	text-align: center;
+}
+
+.btn-num-input::-webkit-outer-spin-button,
+.btn-num-input::-webkit-inner-spin-button {
+	-webkit-appearance: none;
+	margin: 0;
+}
+
+.btn-num-input[type=number] {
+	-moz-appearance: textfield;
+}
+
+/* Facility selection */
+.bastion-facility-select {
+	margin: 12px 0;
+	padding: 10px;
+	background-color: var(--background-secondary);
+	border-radius: 4px;
+}
+
+.bastion-facility-select label {
+	display: block;
+	margin: 8px 0 6px 0;
+	font-weight: bold;
+	font-size: 13px;
+}
+
+.bastion-facility-select input,
+.bastion-facility-select select {
+	width: 100%;
+	padding: 6px;
+	margin-bottom: 8px;
+	border: 1px solid var(--background-secondary-alt);
+	border-radius: 3px;
+	background-color: var(--background-primary);
+	color: var(--text-normal);
+	font-size: 12px;
+	box-sizing: border-box;
+}
+
+.bastion-facility-select hr {
+	border: none;
+	border-top: 1px solid var(--divider-color);
+	margin: 12px 0;
+}
+
 .bastion-btn-secondary:hover {
 	background-color: var(--background-secondary-alt);
 }
@@ -141,12 +221,34 @@
 
 .bastion-facility-item {
 	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	padding: 8px;
+	flex-direction: column;
+	gap: 8px;
+	padding: 10px;
 	margin: 8px 0;
-	background-color: var(--background-tertiary);
-	border-radius: 3px;
+	background-color: var(--background-secondary-alt);
+	border-radius: 4px;
+	border-left: 3px solid var(--interactive-accent);
+}
+
+.bastion-facility-info {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.bastion-facility-info strong {
+	font-size: 14px;
+}
+
+.bastion-facility-meta {
+	font-size: 12px;
+	color: var(--text-muted);
+}
+
+.bastion-facility-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
 }
 
 .bastion-order-item {
@@ -182,4 +284,127 @@
 	margin-top: 20px;
 	padding-top: 15px;
 	border-top: 1px solid var(--divider-color);
+}
+
+/* Bastion Event Modal */
+.bastion-event-modal {
+	min-width: 500px;
+}
+
+.bastion-event-intro {
+	margin-bottom: 15px;
+	color: var(--text-muted);
+	font-size: 13px;
+}
+
+.bastion-event-roll {
+	margin: 15px 0;
+	padding: 15px;
+	background-color: var(--background-secondary);
+	border-radius: 4px;
+	border-left: 4px solid var(--interactive-accent);
+}
+
+.bastion-event-roll-result {
+	font-size: 24px;
+	font-weight: bold;
+	margin: 0;
+	color: var(--interactive-accent);
+}
+
+.bastion-event-details {
+	margin: 15px 0;
+	padding: 15px;
+	background-color: var(--background-secondary);
+	border-radius: 4px;
+}
+
+.bastion-event-details h3 {
+	margin-top: 0;
+	margin-bottom: 10px;
+	color: var(--text-normal);
+}
+
+.bastion-event-description {
+	margin: 10px 0;
+	font-size: 13px;
+	line-height: 1.5;
+}
+
+.bastion-event-type {
+	display: inline-block;
+	padding: 4px 12px;
+	border-radius: 3px;
+	font-size: 11px;
+	font-weight: bold;
+	margin: 5px 0;
+	margin-right: 8px;
+}
+
+.bastion-event-type-positive {
+	background-color: var(--text-success);
+	color: var(--background-primary);
+}
+
+.bastion-event-type-negative {
+	background-color: var(--text-error);
+	color: white;
+}
+
+.bastion-event-type-challenge {
+	background-color: var(--text-warning);
+	color: var(--background-primary);
+}
+
+.bastion-event-type-choice {
+	background-color: var(--interactive-accent);
+	color: white;
+}
+
+.bastion-event-all-is-well {
+	margin-top: 10px;
+	padding: 10px;
+	background-color: var(--background-tertiary);
+	border-radius: 3px;
+	border-left: 3px solid var(--text-success);
+}
+
+.bastion-event-well-detail {
+	margin: 0;
+	font-size: 12px;
+	font-style: italic;
+}
+
+.bastion-event-resolution {
+	margin: 15px 0;
+	padding: 15px;
+	background-color: var(--background-secondary);
+	border-radius: 4px;
+	border: 1px solid var(--divider-color);
+}
+
+.bastion-event-resolution h4 {
+	margin-top: 0;
+	margin-bottom: 8px;
+	font-size: 13px;
+}
+
+.bastion-event-resolution-text {
+	margin: 0;
+	font-size: 12px;
+	line-height: 1.5;
+}
+
+.bastion-event-actions {
+	display: flex;
+	gap: 8px;
+	justify-content: flex-end;
+	margin-top: 15px;
+	padding-top: 15px;
+	border-top: 1px solid var(--divider-color);
+}
+
+.bastion-event-error {
+	color: var(--text-error);
+	font-weight: bold;
 }
