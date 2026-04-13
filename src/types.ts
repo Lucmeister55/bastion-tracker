@@ -12,6 +12,7 @@ export interface Bastion {
   hirelings: Hireling[];
   defenders: number;
   gold: number;
+  turns?: BastionTurn[];
   createdAt: number;
   lastUpdated: number;
 }

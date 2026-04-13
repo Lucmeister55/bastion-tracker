@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf } from "obsidian";
+import { ItemView, WorkspaceLeaf, setIcon } from "obsidian";
 import BastionPlugin from "../main";
 import { Bastion } from "../types";
 
@@ -65,12 +65,12 @@ export class BastionView extends ItemView {
       const character = bastionCard.createEl("div", { cls: "bastion-character", text: `Character: ${bastion.characterName}` });
 
       const stats = bastionCard.createEl("div", { cls: "bastion-stats" });
-      stats.createEl("span", { text: `⚔️ ${bastion.defenders} defend` });
-      stats.createEl("span", { text: `💰 ${bastion.gold} gp` });
-      stats.createEl("span", { text: `🏛️ ${bastion.facilities.length} facilities` });
+      this.createStatChip(stats, "shield", `${bastion.defenders} defenders`);
+      this.createStatChip(stats, "coins", `${bastion.gold} gp`);
+      this.createStatChip(stats, "building", `${bastion.facilities.length} facilities`);
 
       const actions = bastionCard.createEl("div", { cls: "bastion-actions" });
-      actions.createEl("button", { cls: "bastion-btn-small", text: "Edit" }).onclick = () => {
+      actions.createEl("button", { cls: "bastion-btn-small", text: "Manage" }).onclick = () => {
         this.plugin.openBastionModal(bastion.id);
       };
       actions.createEl("button", { cls: "bastion-btn-small", text: "Turn" }).onclick = () => {
@@ -83,5 +83,12 @@ export class BastionView extends ItemView {
         }
       };
     });
+  }
+
+  private createStatChip(container: HTMLElement, iconName: string, text: string): void {
+    const chip = container.createEl("span", { cls: "bastion-stat-chip" });
+    const icon = chip.createSpan({ cls: "bastion-stat-icon" });
+    setIcon(icon, iconName);
+    chip.createSpan({ text });
   }
 }

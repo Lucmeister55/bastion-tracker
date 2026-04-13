@@ -93,7 +93,8 @@ export class CompendiumParser {
   private extractFrontmatter(
     content: string
   ): { frontmatter: Record<string, any>; body: string } {
-    const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+    const normalizedContent = content.replace(/\r\n/g, "\n");
+    const frontmatterMatch = normalizedContent.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
 
     if (!frontmatterMatch) {
       return { frontmatter: {}, body: content };
@@ -104,7 +105,26 @@ export class CompendiumParser {
     const frontmatter: Record<string, any> = {};
 
     // Simple YAML parser for our needs
-    for (const line of frontmatterStr.split("\n")) {
+    const lines = frontmatterStr.split("\n");
+    let activeListKey: "tags" | "cssclasses" | null = null;
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+
+      if (activeListKey) {
+        if (trimmed.startsWith("- ")) {
+          if (!Array.isArray(frontmatter[activeListKey])) {
+            frontmatter[activeListKey] = [];
+          }
+          frontmatter[activeListKey].push(trimmed.slice(2).trim());
+          continue;
+        }
+
+        if (trimmed) {
+          activeListKey = null;
+        }
+      }
+
       const colonIndex = line.indexOf(":");
       if (colonIndex === -1) continue;
 
@@ -112,13 +132,28 @@ export class CompendiumParser {
       const value = line.substring(colonIndex + 1).trim();
 
       if (key === "tags") {
-        // Parse array syntax: [tag1, tag2]
-        const arrayMatch = value.match(/\[(.*?)\]/);
-        if (arrayMatch && arrayMatch[1]) {
-          frontmatter.tags = arrayMatch[1].split(",").map((t) => t.trim());
+        if (!value) {
+          frontmatter.tags = [];
+          activeListKey = "tags";
+        } else {
+          const arrayMatch = value.match(/\[(.*?)\]/);
+          if (arrayMatch && arrayMatch[1]) {
+            frontmatter.tags = arrayMatch[1].split(",").map((t) => t.trim());
+          }
         }
       } else if (key === "cssclasses") {
-        frontmatter.cssclasses = value.startsWith("[") ? JSON.parse(value) : [value];
+        if (!value) {
+          frontmatter.cssclasses = [];
+          activeListKey = "cssclasses";
+        } else if (value.startsWith("[")) {
+          try {
+            frontmatter.cssclasses = JSON.parse(value);
+          } catch {
+            frontmatter.cssclasses = [value];
+          }
+        } else {
+          frontmatter.cssclasses = [value];
+        }
       } else {
         frontmatter[key] = value;
       }

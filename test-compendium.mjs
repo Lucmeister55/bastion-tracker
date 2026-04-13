@@ -24,7 +24,8 @@ class TestRunner {
         return;
       }
 
-      const content = fs.readFileSync(exampleFile, "utf-8");
+      const rawContent = fs.readFileSync(exampleFile, "utf-8");
+      const content = rawContent.replace(/\r\n/g, "\n");
 
       // Test YAML frontmatter parsing
       const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
@@ -37,13 +38,44 @@ class TestRunner {
       const body = frontmatterMatch[2] || "";
 
       // Test tag parsing
-      const tagMatch = frontmatterStr.match(/tags:\n([\s\S]*?)(?=\n[a-z]|\n---)/);
-      if (!tagMatch) {
+      const frontmatterLines = frontmatterStr.split("\n");
+      const parsedTags = [];
+      let inTagsBlock = false;
+
+      for (const line of frontmatterLines) {
+        const trimmed = line.trim();
+
+        if (trimmed.startsWith("tags:")) {
+          inTagsBlock = true;
+          const inlineArrayMatch = trimmed.match(/tags:\s*\[(.*)\]$/);
+          if (inlineArrayMatch && inlineArrayMatch[1]) {
+            parsedTags.push(
+              ...inlineArrayMatch[1]
+                .split(",")
+                .map((tag) => tag.trim())
+                .filter(Boolean)
+            );
+            inTagsBlock = false;
+          }
+          continue;
+        }
+
+        if (inTagsBlock && trimmed.startsWith("- ")) {
+          parsedTags.push(trimmed.slice(2).trim());
+          continue;
+        }
+
+        if (inTagsBlock && trimmed && !trimmed.startsWith("- ")) {
+          inTagsBlock = false;
+        }
+      }
+
+      if (parsedTags.length === 0) {
         console.error("[FAIL] Failed to parse tags");
         process.exit(1);
       }
 
-      const hasBastionTag = tagMatch[1].includes("bastion");
+      const hasBastionTag = parsedTags.some((tag) => tag.includes("bastion"));
       if (!hasBastionTag) {
         console.error("[FAIL] Example missing bastion tag");
         process.exit(1);

@@ -186,3 +186,50 @@ export function getAllIsWellDetail(): string {
   const index = Math.floor(Math.random() * ALL_IS_WELL_TABLE.length);
   return ALL_IS_WELL_TABLE[index] || "Everything appears to be normal.";
 }
+
+export async function resolveEventOutcome(app: App, eventId: string): Promise<string> {
+  switch (eventId) {
+    case "all-is-well": {
+      return getAllIsWellDetail();
+    }
+    case "attack": {
+      const losses = await rollDice(app, 6, 6);
+      return `Attack losses check result: ${losses} (6d6). Apply defender losses per table rules.`;
+    }
+    case "criminal-hireling": {
+      const bribeRoll = await rollDice(app, 1, 6);
+      return `Bribe pressure: ${bribeRoll * 100} GP (1d6 x 100).`;
+    }
+    case "lost-hirelings": {
+      const lost = await rollDice(app, 1, 4);
+      return `Lost hirelings impact roll: ${lost} (1d4).`;
+    }
+    case "refugees": {
+      const refugees = await rollDice(app, 2, 4);
+      return `Refugees arriving: ${refugees} (2d4).`;
+    }
+    case "treasure": {
+      const treasureRoll = await rollD100(app);
+      return `Treasure table roll: ${treasureRoll} (1d100). Resolve on DMG treasure table.`;
+    }
+    case "request-for-aid": {
+      return "Choose defenders to dispatch, then roll per-defender d6 and total results (10+ for full reward).";
+    }
+    case "extraordinary-opportunity": {
+      return "Decision event: pay 500 GP to pursue and trigger another event roll, or decline with no further effect.";
+    }
+    case "friendly-visitors": {
+      const reward = await rollDice(app, 1, 6);
+      return `Visitor payment roll: ${reward * 100} GP (1d6 x 100).`;
+    }
+    case "guest": {
+      const guestType = await rollDice(app, 1, 4);
+      return `Guest type roll: ${guestType} (1d4).`;
+    }
+    case "magical-discovery": {
+      return "Gain one uncommon potion or scroll per event rules.";
+    }
+    default:
+      return "Resolve according to Bastion event narrative rules.";
+  }
+}

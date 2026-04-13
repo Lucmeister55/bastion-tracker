@@ -80,6 +80,19 @@ export class FacilityEditorModal extends Modal {
           })
       );
 
+    new Setting(spaceSection)
+      .setName("Size (squares)")
+      .addText((text) =>
+        text
+          .setValue(String(this.facility.size || 16))
+          .onChange((value) => {
+            const parsed = parseInt(value, 10);
+            if (!isNaN(parsed)) {
+              this.facility.size = Math.max(1, parsed);
+            }
+          })
+      );
+
     // Hirelings & Orders
     const detailsSection = contentEl.createEl("div", { cls: "bastion-modal-section" });
     detailsSection.createEl("h3", { text: "Details" });
@@ -99,14 +112,14 @@ export class FacilityEditorModal extends Modal {
 
     new Setting(detailsSection)
       .setName("Available Orders")
+      .setDesc("Comma-separated, e.g. Craft, Research")
       .addText((text) =>
         text
-          .setPlaceholder("e.g., Maintain, Research, Craft")
           .setValue((this.facility.availableOrders || []).join(", "))
           .onChange((value) => {
             this.facility.availableOrders = value
               .split(",")
-              .map((s) => s.trim().toUpperCase())
+              .map((s) => s.trim())
               .filter((s) => s.length > 0) as Order[];
           })
       );

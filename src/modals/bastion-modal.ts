@@ -1,20 +1,27 @@
-import { Modal, App, Setting } from "obsidian";
+import { Modal, App, MarkdownRenderer, Notice, Setting, setIcon } from "obsidian";
 import BastionPlugin from "../main";
 import { Bastion, BasilionFacility } from "../types";
 import { CompendiumParser } from "../utils/compendium-parser";
 import { FacilityEditorModal } from "./facility-editor-modal";
-import { BastionEventModal } from "./bastion-event-modal";
 
 export class BastionModal extends Modal {
   plugin: BastionPlugin;
   bastion: Bastion | null;
+  isCreationMode: boolean;
+  creationStep = 1;
+  starterCrampedName = "Bedroom";
+  starterRoomyName = "Dining Room";
   onSave: (bastion: Bastion) => void;
   compendiumFacilities: BasilionFacility[] = [];
 
   constructor(app: App, plugin: BastionPlugin, bastionId?: string) {
     super(app);
     this.plugin = plugin;
-    this.bastion = bastionId ? JSON.parse(JSON.stringify(plugin.dataManager.getBastion(bastionId))) : this.createNewBastion();
+    const existingBastion = bastionId ? plugin.dataManager.getBastion(bastionId) : null;
+    this.isCreationMode = !existingBastion;
+    this.bastion = existingBastion
+      ? JSON.parse(JSON.stringify(existingBastion))
+      : this.createNewBastion();
     this.onSave = (bastion) => {
       plugin.dataManager.saveBastion(bastion);
       plugin.refreshBastionView();
@@ -38,6 +45,12 @@ export class BastionModal extends Modal {
   }
 
   async onOpen() {
+    if (this.isCreationMode) {
+      this.modalEl.removeClass("bastion-manage-modal");
+    } else {
+      this.modalEl.addClass("bastion-manage-modal");
+    }
+
     // Load compendium facilities if auto-load is enabled
     if (this.plugin.dataManager.getSettings().autoLoadRooms) {
       const parser = new CompendiumParser(this.app);
@@ -50,320 +63,92 @@ export class BastionModal extends Modal {
   }
 
   display() {
+    if (this.isCreationMode) {
+      this.displayCreationWizard();
+      return;
+    }
+
+    this.displayManageView();
+  }
+
+  private displayManageView(): void {
+    if (!this.bastion) return;
+
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl("h2", { text: this.bastion?.id.includes("bastion-") && !this.plugin.dataManager.getBastion(this.bastion.id) ? "New Bastion" : "Edit Bastion" });
 
-    // Basic Info
-    const basicSection = contentEl.createEl("div", { cls: "bastion-modal-section" });
-    basicSection.createEl("h3", { text: "Basic Information" });
+    const layout = contentEl.createEl("div", { cls: "bastion-manage-layout" });
+    const left = layout.createEl("div", { cls: "bastion-manage-left" });
+    const right = layout.createEl("div", { cls: "bastion-manage-right" });
 
-    new Setting(basicSection)
-      .setName("Bastion Name")
-      .addText((text) =>
-        text
-          .setValue(this.bastion?.name || "")
-          .onChange((value) => {
-            if (this.bastion) this.bastion.name = value;
-          })
-      );
+    left.createEl("h3", { text: "Bastion stats" });
+    this.addEditableField(left, "Bastion name", this.bastion.name, (value) => {
+      this.bastion!.name = value;
+    });
+    this.addEditableField(left, "Character owner", this.bastion.characterName || "Unassigned", (value) => {
+      this.bastion!.characterName = value;
+    });
+    this.addEditableField(left, "Defenders", String(this.bastion.defenders), (value) => {
+      const parsed = parseInt(value, 10);
+      this.bastion!.defenders = Number.isFinite(parsed) ? Math.max(0, parsed) : this.bastion!.defenders;
+    }, true);
 
-    new Setting(basicSection)
-      .setName("Character Name")
-      .addText((text) =>
-        text
-          .setValue(this.bastion?.characterName || "")
-          .onChange((value) => {
-            if (this.bastion) this.bastion.characterName = value;
-          })
-      );
-
-    new Setting(basicSection)
-      .setName("Level")
-      .then((setting) => {
-        const btn_dec = setting.controlEl.createEl("button", { cls: "btn-small", text: "−" });
-        const input = setting.controlEl.createEl("input", {
-          cls: "btn-num-input",
-          type: "number",
-          value: String(this.bastion?.level || 5),
-        }) as HTMLInputElement;
-        input.min = "1";
-        input.max = "20";
-        const btn_inc = setting.controlEl.createEl("button", { cls: "btn-small", text: "+" });
-
-        setting.controlEl.style.display = "flex";
-        setting.controlEl.style.gap = "8px";
-        setting.controlEl.style.alignItems = "center";
-
-        const updateValue = (newVal: number) => {
-          if (this.bastion) {
-            this.bastion.level = Math.max(1, Math.min(20, newVal));
-            input.value = String(this.bastion.level);
-          }
-        };
-
-        btn_dec.onclick = () => {
-          updateValue((this.bastion?.level || 5) - 1);
-        };
-
-        btn_inc.onclick = () => {
-          updateValue((this.bastion?.level || 5) + 1);
-        };
-
-        input.onchange = () => {
-          const val = parseInt(input.value, 10);
-          if (!isNaN(val)) {
-            updateValue(val);
-          }
-        };
-      });
-
-    new Setting(basicSection)
-      .setName("Description")
-      .addTextArea((text) =>
-        text
-          .setValue(this.bastion?.description || "")
-          .onChange((value) => {
-            if (this.bastion) this.bastion.description = value;
-          })
-      );
-
-    // Resources Section
-    const resourcesSection = contentEl.createEl("div", { cls: "bastion-modal-section" });
-    resourcesSection.createEl("h3", { text: "Resources" });
-
-    new Setting(resourcesSection)
-      .setName("Bastion Defenders")
-      .then((setting) => {
-        const btn_dec = setting.controlEl.createEl("button", { cls: "btn-small", text: "−" });
-        const input = setting.controlEl.createEl("input", {
-          cls: "btn-num-input",
-          type: "number",
-          value: String(this.bastion?.defenders || 0),
-        }) as HTMLInputElement;
-        input.min = "0";
-        const btn_inc = setting.controlEl.createEl("button", { cls: "btn-small", text: "+" });
-
-        setting.controlEl.style.display = "flex";
-        setting.controlEl.style.gap = "8px";
-        setting.controlEl.style.alignItems = "center";
-
-        const updateValue = (newVal: number) => {
-          if (this.bastion) {
-            this.bastion.defenders = Math.max(0, newVal);
-            input.value = String(this.bastion.defenders);
-          }
-        };
-
-        btn_dec.onclick = () => {
-          updateValue((this.bastion?.defenders || 0) - 1);
-        };
-
-        btn_inc.onclick = () => {
-          updateValue((this.bastion?.defenders || 0) + 1);
-        };
-
-        input.onchange = () => {
-          const val = parseInt(input.value, 10);
-          if (!isNaN(val)) {
-            updateValue(val);
-          }
-        };
-      });
-
-    new Setting(resourcesSection)
-      .setName("Gold (gp)")
-      .addText((text) =>
-        text
-          .setValue((this.bastion?.gold || 0).toString())
-          .onChange((value) => {
-            if (this.bastion) this.bastion.gold = parseInt(value) || 0;
-          })
-      );
-
-    // Facilities Section
-    const facilitiesSection = contentEl.createEl("div", { cls: "bastion-modal-section" });
-    facilitiesSection.createEl("h3", { text: "Facilities" });
-    facilitiesSection.createEl("p", { text: `Total: ${this.bastion?.facilities.length || 0}` });
-
-    const addFacilityBtn = facilitiesSection.createEl("button", { cls: "bastion-btn", text: "Add Facility" });
-    addFacilityBtn.onclick = () => {
-      if (this.bastion) {
-        // Show selection interface
-        const selectEl = facilitiesSection.createEl("div", { cls: "bastion-facility-select" });
-        
-        // Custom name input
-        selectEl.createEl("label", { text: "Custom Facility Name (optional):" });
-        const customInput = selectEl.createEl("input", {
-          type: "text",
-          placeholder: "Leave blank to choose from compendium",
-        }) as HTMLInputElement;
-        
-        const createCustomBtn = selectEl.createEl("button", { text: "Create Custom", cls: "bastion-btn-small" });
-        createCustomBtn.onclick = () => {
-          if (customInput.value.trim()) {
-            const newFacility: BasilionFacility = {
-              id: `facility-${Date.now()}`,
-              name: customInput.value.trim(),
-              type: "basic",
-              spaceType: "Roomy",
-              size: 16,
-              isUpgraded: false,
-              description: "",
-              availableOrders: [],
-              notes: "Custom facility",
-              hirelings: 1,
-            };
-            this.bastion?.facilities.push(newFacility);
-            selectEl.remove();
-            // Open editor for custom facility
-            new FacilityEditorModal(this.app, this.plugin, newFacility, (updated) => {
-              Object.assign(newFacility, updated);
-            }).open();
-            this.display();
-          }
-        };
-        
-        // Compendium selection
-        if (this.compendiumFacilities.length > 0) {
-          selectEl.createEl("hr");
-          selectEl.createEl("label", { text: "Or select from compendium:" });
-          
-          // Filter facilities based on level requirement
-          const restrict = this.plugin.dataManager.getSettings().restrictToLevelRequirements;
-          const bastionLevel = this.bastion.level;
-          const availableFacilities = restrict
-            ? this.compendiumFacilities.filter((f) => !f.minLevel || f.minLevel <= bastionLevel)
-            : this.compendiumFacilities;
-          
-          // Sort by level
-          const sorted = availableFacilities.sort((a, b) => (a.minLevel || 0) - (b.minLevel || 0));
-          
-          const dropdown = selectEl.createEl("select");
-          
-          sorted.forEach((facility) => {
-            const levelStr = facility.minLevel ? ` (Level ${facility.minLevel})` : " (Any Level)";
-            dropdown.createEl("option", { text: facility.name + levelStr, value: facility.id });
-          });
-          
-          const selectCompendiumBtn = selectEl.createEl("button", { text: "Add Selected", cls: "bastion-btn-small" });
-          selectCompendiumBtn.onclick = () => {
-            const selectedId = dropdown.value;
-            const selected = this.compendiumFacilities.find((f) => f.id === selectedId);
-            if (selected) {
-              const newFacility = JSON.parse(JSON.stringify(selected));
-              newFacility.id = `facility-${Date.now()}`;
-              this.bastion?.facilities.push(newFacility);
-              selectEl.remove();
-              this.display();
-            }
-          };
-        } else {
-          selectEl.createEl("p", { text: "No compendium facilities loaded. Create a custom facility instead." });
-        }
-      }
+    const levelRow = left.createEl("div", { cls: "bastion-edit-row" });
+    levelRow.createEl("span", { cls: "bastion-edit-label", text: "Level" });
+    const levelVal = levelRow.createEl("div", { cls: "bastion-manage-level-controls" });
+    levelVal.createEl("button", { cls: "btn-small", text: "−" }).onclick = () => {
+      this.bastion!.level = Math.max(1, this.bastion!.level - 1);
+      this.displayManageView();
+    };
+    levelVal.createEl("strong", { text: String(this.bastion.level) });
+    levelVal.createEl("button", { cls: "btn-small", text: "+" }).onclick = () => {
+      this.bastion!.level = Math.min(20, this.bastion!.level + 1);
+      this.displayManageView();
+    };
+    const levelPen = levelRow.createEl("button", { cls: "bastion-icon-btn" });
+    levelPen.setAttr("type", "button");
+    levelPen.setAttr("aria-label", "Edit level");
+    setIcon(levelPen, "pencil");
+    levelPen.onclick = () => {
+      const raw = window.prompt("Set level", String(this.bastion!.level));
+      if (raw === null) return;
+      const parsed = parseInt(raw, 10);
+      if (!Number.isFinite(parsed)) return;
+      this.bastion!.level = Math.max(1, Math.min(20, parsed));
+      this.displayManageView();
     };
 
-    this.bastion?.facilities.forEach((facility: BasilionFacility, index: number) => {
-      const facilityEl = facilitiesSection.createEl("div", { cls: "bastion-facility-item" });
-      
-      const infoEl = facilityEl.createEl("div", { cls: "bastion-facility-info" });
-      infoEl.createEl("strong", { text: facility.name });
-      infoEl.createEl("span", { cls: "bastion-facility-meta", text: `${facility.type} • ${facility.spaceType}${facility.isUpgraded ? " (Upgraded)" : ""}` });
-      
-      const actionsEl = facilityEl.createEl("div", { cls: "bastion-facility-actions" });
-      
-      actionsEl.createEl("button", { cls: "bastion-btn-small", text: "Edit" }).onclick = () => {
-        new FacilityEditorModal(this.app, this.plugin, facility, (updated) => {
-          Object.assign(facility, updated);
-          this.display();
-        }).open();
-      };
+    this.addEditableField(left, "Gold (gp)", String(this.bastion.gold), (value) => {
+      const parsed = parseInt(value, 10);
+      this.bastion!.gold = Number.isFinite(parsed) ? Math.max(0, parsed) : this.bastion!.gold;
+    }, true);
 
-      // Show enlarge button for basic facilities
-      if (facility.type === "basic" && facility.spaceType !== "Vast") {
-        const enlargeText = facility.spaceType === "Cramped" ? "To Roomy" : "To Vast";
-        actionsEl.createEl("button", { cls: "bastion-btn-small", text: `Enlarge: ${enlargeText}` }).onclick = () => {
-          if (facility.spaceType === "Cramped") {
-            facility.spaceType = "Roomy";
-            facility.size = 16;
-          } else if (facility.spaceType === "Roomy") {
-            facility.spaceType = "Vast";
-            facility.size = 36;
-          }
-          this.display();
-        };
-      }
+    this.renderSizeGuide(left);
 
-      actionsEl.createEl("button", { cls: "bastion-btn-small", text: "Remove" }).onclick = () => {
-        if (this.bastion) {
-          this.bastion.facilities.splice(index, 1);
-          this.display();
-        }
-      };
-    });
+    const basicFacilities = this.bastion.facilities.filter((f) => f.type === "basic");
+    const specialFacilities = this.bastion.facilities.filter((f) => f.type === "special");
 
-    // Orders Section
-    const ordersSection = contentEl.createEl("div", { cls: "bastion-modal-section" });
-    ordersSection.createEl("h3", { text: "Issue Orders" });
-    
-    const ordersButtonsEl = ordersSection.createEl("div");
-    ordersButtonsEl.style.display = "flex";
-    ordersButtonsEl.style.flexWrap = "wrap";
-    ordersButtonsEl.style.gap = "8px";
-    
-    const orders: Array<{ name: string; action: () => void }> = [
-      {
-        name: "Maintain",
-        action: () => {
-          new BastionEventModal(this.app, this.plugin, this.bastion!).open();
-        },
-      },
-      {
-        name: "Recruit",
-        action: () => {
-          alert("Recruit: Roll for new hireling availability");
-        },
-      },
-      {
-        name: "Trade",
-        action: () => {
-          alert("Trade: Gain resources from trade");
-        },
-      },
-      {
-        name: "Craft",
-        action: () => {
-          alert("Craft: Create items in your facilities");
-        },
-      },
-      {
-        name: "Research",
-        action: () => {
-          alert("Research: Gain arcane knowledge");
-        },
-      },
-      {
-        name: "Empower",
-        action: () => {
-          alert("Empower: Strengthen defenses or facilities");
-        },
-      },
-      {
-        name: "Harvest",
-        action: () => {
-          alert("Harvest: Gather resources from your facilities");
-        },
-      },
-    ];
-    
-    orders.forEach((order) => {
-      const btn = ordersButtonsEl.createEl("button", {
-        cls: "bastion-btn-small",
-        text: order.name,
-      });
-      btn.onclick = order.action;
-    });
+    const basicCol = right.createEl("div", { cls: "bastion-manage-col" });
+    const specialCol = right.createEl("div", { cls: "bastion-manage-col" });
+
+    this.renderFacilityColumn(
+      basicCol,
+      "Basic facilities",
+      "basic",
+      basicFacilities,
+      10,
+      `${basicFacilities.length}/10 used`
+    );
+
+    const unlockedSpecialSlots = this.getSpecialFacilitySlots(this.bastion.level);
+    this.renderFacilityColumn(
+      specialCol,
+      "Special facilities",
+      "special",
+      specialFacilities,
+      6,
+      `${specialFacilities.length}/${unlockedSpecialSlots} unlocked slots`
+    );
 
     // Buttons
     const buttonSection = contentEl.createEl("div", { cls: "bastion-modal-buttons" });
@@ -374,6 +159,547 @@ export class BastionModal extends Modal {
         this.close();
       }
     };
+
+    buttonSection.createEl("button", { cls: "bastion-btn-secondary", text: "Cancel" }).onclick = () => {
+      this.close();
+    };
+  }
+
+  private addEditableField(
+    container: HTMLElement,
+    label: string,
+    value: string,
+    onSave: (value: string) => void,
+    numeric = false
+  ): void {
+    const row = container.createEl("div", { cls: "bastion-edit-row" });
+    row.createEl("span", { cls: "bastion-edit-label", text: label });
+    row.createEl("span", { cls: "bastion-edit-value", text: value });
+    const btn = row.createEl("button", { cls: "bastion-icon-btn" });
+    btn.setAttr("type", "button");
+    btn.setAttr("aria-label", `Edit ${label}`);
+    setIcon(btn, "pencil");
+    btn.onclick = () => {
+      const next = window.prompt(`Edit ${label}`, value);
+      if (next === null) return;
+      if (numeric && !/^-?\d+$/.test(next.trim())) return;
+      onSave(next.trim());
+      this.displayManageView();
+    };
+  }
+
+  private renderFacilityColumn(
+    column: HTMLElement,
+    title: string,
+    type: "basic" | "special",
+    facilities: BasilionFacility[],
+    absoluteMax: number,
+    subtitle: string
+  ): void {
+    column.createEl("h3", { text: title });
+    column.createEl("p", { text: subtitle });
+
+    const addBox = column.createEl("div", { cls: "bastion-facility-select" });
+    const modeSelect = addBox.createEl("select") as HTMLSelectElement;
+    modeSelect.createEl("option", { text: "Use compendium", value: "compendium" });
+    modeSelect.createEl("option", { text: "Custom facility", value: "custom" });
+
+    const compendiumList = addBox.createEl("select") as HTMLSelectElement;
+    const options = this.getCompendiumFacilityOptions().filter((opt) => opt.facilityType === type);
+    options.forEach((opt) => {
+      const label = opt.facilityType === "special" ? `${opt.name} (Special, Level ${opt.facility.minLevel || 0})` : `${opt.name} (Basic)`;
+      compendiumList.createEl("option", { text: label, value: opt.id });
+    });
+
+    modeSelect.onchange = () => {
+      compendiumList.style.display = modeSelect.value === "custom" ? "none" : "block";
+    };
+
+    const addBtn = addBox.createEl("button", { cls: "bastion-btn-small", text: "Add" });
+    addBtn.title = type === "basic" ? "Build cost depends on size" : "Cost: Free (uses special slot)";
+
+    addBtn.onclick = () => {
+      if (!this.bastion) return;
+
+      if (type === "basic" && facilities.length >= absoluteMax) {
+        new Notice("Basic facilities are capped at 10.");
+        return;
+      }
+
+      if (type === "special") {
+        const unlocked = this.getSpecialFacilitySlots(this.bastion.level);
+        if (facilities.length >= unlocked) {
+          new Notice(`No unlocked special slots at level ${this.bastion.level}.`);
+          return;
+        }
+      }
+
+      if (modeSelect.value === "custom") {
+        const draft: BasilionFacility = {
+          id: `facility-${Date.now()}`,
+          name: `Custom ${type === "basic" ? "Basic" : "Special"}`,
+          type,
+          spaceType: "Roomy",
+          size: 16,
+          isUpgraded: false,
+          description: "",
+          availableOrders: [],
+          notes: "",
+          hirelings: type === "special" ? 1 : 0,
+        };
+        new FacilityEditorModal(this.app, this.plugin, draft, (edited) => {
+          if (edited.type === "basic") {
+            const built = this.createBasicFacility(
+              edited.name,
+              edited.spaceType,
+              edited.spaceType === "Cramped" ? 500 : edited.spaceType === "Roomy" ? 1000 : 3000,
+              edited.spaceType === "Cramped" ? 20 : edited.spaceType === "Roomy" ? 45 : 125,
+              edited.spaceType === "Cramped" ? 4 : edited.spaceType === "Roomy" ? 16 : 36
+            );
+            built.availableOrders = edited.availableOrders || [];
+            built.description = edited.description;
+            built.notes = edited.notes;
+            built.hirelings = edited.hirelings;
+            this.bastion!.facilities.push(built);
+          } else {
+            edited.id = `facility-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+            edited.cost = undefined;
+            edited.timeToBuild = undefined;
+            this.bastion!.facilities.push(edited);
+          }
+          this.displayManageView();
+        }).open();
+        return;
+      }
+
+      const selected = options.find((opt) => opt.id === compendiumList.value);
+      if (!selected) {
+        new Notice("No compendium facility selected.");
+        return;
+      }
+      const copy = JSON.parse(JSON.stringify(selected.facility)) as BasilionFacility;
+      copy.id = `facility-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+      copy.type = type;
+      if (type === "special") {
+        copy.cost = undefined;
+        copy.timeToBuild = undefined;
+      }
+      this.bastion.facilities.push(copy);
+      this.displayManageView();
+    };
+
+    if (type === "special") {
+      const unlocked = this.bastion ? this.getSpecialFacilitySlots(this.bastion.level) : 0;
+      const slotsWrap = column.createEl("div", { cls: "bastion-special-slot-grid" });
+
+      for (let i = 0; i < absoluteMax; i++) {
+        const assigned = facilities[i];
+        const slot = slotsWrap.createEl("div", { cls: "bastion-special-slot-card" });
+        const unlockLevel = this.getSpecialSlotUnlockLevel(i);
+
+        if (i >= unlocked) {
+          slot.addClass("is-locked");
+          slot.createEl("strong", { text: `Slot ${i + 1}` });
+          slot.createEl("span", { text: `Unlocks at level ${unlockLevel}` });
+          continue;
+        }
+
+        if (!assigned) {
+          slot.addClass("is-empty");
+          slot.createEl("strong", { text: `Slot ${i + 1}` });
+          slot.createEl("span", { text: "Empty" });
+          continue;
+        }
+
+        slot.addClass("is-filled");
+        slot.createEl("strong", { text: assigned.name });
+        slot.createEl("span", { text: `${assigned.spaceType} • ${assigned.size} squares` });
+        this.appendSizeIcon(slot, assigned);
+        const actions = slot.createEl("div", { cls: "bastion-facility-actions" });
+        const remove = actions.createEl("button", { cls: "bastion-btn-small", text: "Remove" });
+        remove.onclick = () => {
+          if (!this.bastion) return;
+          this.bastion.facilities = this.bastion.facilities.filter((f) => f.id !== assigned.id);
+          this.displayManageView();
+        };
+      }
+
+      return;
+    }
+
+    facilities.forEach((facility) => {
+      const card = column.createEl("div", {
+        cls: facility.type === "basic" ? "bastion-facility-item bastion-facility-item-basic" : "bastion-facility-item",
+      });
+      card.createEl("strong", { text: facility.name });
+      card.createEl("span", {
+        cls: "bastion-facility-meta",
+        text: `${facility.spaceType} • ${facility.size} squares`,
+      });
+
+      this.appendSizeIcon(card, facility);
+      this.appendSizeStepper(card, facility);
+
+      const actions = card.createEl("div", { cls: "bastion-facility-actions" });
+      const remove = actions.createEl("button", { cls: "bastion-btn-small", text: "Remove" });
+      remove.onclick = () => {
+        if (!this.bastion) return;
+        this.bastion.facilities = this.bastion.facilities.filter((f) => f.id !== facility.id);
+        this.displayManageView();
+      };
+    });
+  }
+
+  private appendSizeStepper(container: HTMLElement, facility: BasilionFacility): void {
+    const levels: Array<{ label: "Cramped" | "Roomy" | "Vast"; squares: number; cost?: number; days?: number }> = [
+      { label: "Cramped", squares: 4, cost: 500, days: 25 },
+      { label: "Roomy", squares: 16, cost: 2000, days: 80 },
+      { label: "Vast", squares: 36 },
+    ];
+
+    const currentIndex = levels.findIndex((level) => level.label === facility.spaceType);
+    const safeIndex = currentIndex >= 0 ? currentIndex : 1;
+
+    const stepper = container.createEl("div", { cls: "bastion-size-stepper" });
+    const minus = stepper.createEl("button", { cls: "bastion-btn-small", text: "−" });
+    minus.setAttr("type", "button");
+    const box = stepper.createEl("div", { cls: "bastion-size-box" });
+    const plus = stepper.createEl("button", { cls: "bastion-btn-small", text: "+" });
+    plus.setAttr("type", "button");
+
+    levels.forEach((level, index) => {
+      box.createEl("span", {
+        cls: index === safeIndex ? "bastion-size-chip active" : "bastion-size-chip",
+        text: level.label,
+      });
+    });
+
+    minus.disabled = safeIndex <= 0;
+    plus.disabled = safeIndex >= levels.length - 1;
+
+    if (safeIndex > 0) {
+      const previous = levels[safeIndex - 1];
+      minus.onclick = () => {
+        if (!previous) return;
+        facility.spaceType = previous.label;
+        facility.size = previous.squares;
+        facility.cost = previous.cost;
+        facility.timeToBuild = previous.days;
+        this.displayManageView();
+      };
+    }
+
+    if (safeIndex < levels.length - 1) {
+      const next = levels[safeIndex + 1];
+      if (!next) return;
+      plus.title = next.cost !== undefined ? `Upgrade to ${next.label}: ${next.cost} GP, ${next.days} days` : `Upgrade to ${next.label}`;
+      plus.onclick = () => {
+        if (!next) return;
+        facility.spaceType = next.label;
+        facility.size = next.squares;
+        facility.cost = next.cost;
+        facility.timeToBuild = next.days;
+        this.displayManageView();
+      };
+    }
+  }
+
+  private renderSizeGuide(container: HTMLElement): void {
+    const guide = container.createEl("div", { cls: "bastion-size-guide" });
+    guide.createEl("h4", { text: "Space reference" });
+
+    const clusters = [
+      { label: "Cramped", symbol: "◔", count: 4, cols: 2 },
+      { label: "Roomy", symbol: "◕", count: 16, cols: 4 },
+      { label: "Vast", symbol: "✺", count: 36, cols: 6 },
+    ];
+
+    clusters.forEach((cluster) => {
+      const clusterCard = guide.createEl("div", { cls: "bastion-size-guide-card" });
+      const header = clusterCard.createEl("div", { cls: "bastion-size-guide-header" });
+      header.createEl("span", { cls: "bastion-size-icon", text: cluster.symbol });
+      header.createEl("strong", { text: `${cluster.label} (${cluster.count} squares)` });
+
+      const grid = clusterCard.createEl("div", { cls: "bastion-size-wire-grid" });
+      grid.style.gridTemplateColumns = `repeat(${cluster.cols}, 1fr)`;
+      for (let i = 0; i < cluster.count; i++) {
+        grid.createEl("span", { cls: "bastion-size-square" });
+      }
+    });
+  }
+
+  private appendSizeIcon(container: HTMLElement, facility: BasilionFacility): void {
+    const visuals: Record<string, { symbol: string; cols: number }> = {
+      Cramped: { symbol: "◔", cols: 2 },
+      Roomy: { symbol: "◕", cols: 4 },
+      Vast: { symbol: "✺", cols: 6 },
+    };
+
+    const meta = visuals[facility.spaceType] || visuals.Roomy;
+    const visualWrap = container.createEl("div", { cls: "bastion-size-icon-row" });
+    const icon = visualWrap.createEl("span", { cls: "bastion-size-icon", text: meta?.symbol || "◕" });
+    icon.setAttr("title", `${facility.spaceType} • ${facility.size} squares`);
+  }
+
+  private getSpecialFacilitySlots(level: number): number {
+    if (level >= 17) return 6;
+    if (level >= 13) return 5;
+    if (level >= 9) return 4;
+    if (level >= 5) return 2;
+    return 0;
+  }
+
+  private getSpecialSlotUnlockLevel(slotIndex: number): number {
+    if (slotIndex < 2) return 5;
+    if (slotIndex < 4) return 9;
+    if (slotIndex < 5) return 13;
+    return 17;
+  }
+
+  private getNextSpecialUnlockLevel(level: number): number | null {
+    const thresholds = [5, 9, 13, 17];
+    for (const threshold of thresholds) {
+      if (level < threshold) {
+        return threshold;
+      }
+    }
+    return null;
+  }
+
+  private getFacilityTypeFromCompendium(facility: BasilionFacility): "basic" | "special" {
+    return facility.minLevel ? "special" : "basic";
+  }
+
+  private getCompendiumFacilityOptions(): Array<{
+    id: string;
+    name: string;
+    facilityType: "basic" | "special";
+    facility: BasilionFacility;
+  }> {
+    if (!this.bastion) return [];
+    const restrict = this.plugin.dataManager.getSettings().restrictToLevelRequirements;
+    const level = this.bastion.level;
+
+    return this.compendiumFacilities
+      .filter((facility) => (restrict ? !facility.minLevel || facility.minLevel <= level : true))
+      .map((facility) => ({
+        id: facility.id,
+        name: facility.name,
+        facilityType: this.getFacilityTypeFromCompendium(facility),
+        facility,
+      }))
+      .sort((a, b) => (a.facility.minLevel || 0) - (b.facility.minLevel || 0));
+  }
+
+  private createBasicFacility(
+    name: string,
+    spaceType: "Cramped" | "Roomy" | "Vast",
+    cost: number,
+    days: number,
+    size: number
+  ): BasilionFacility {
+    return {
+      id: `facility-${Date.now()}-${Math.floor(Math.random() * 100000)}`,
+      name,
+      type: "basic",
+      spaceType,
+      size,
+      cost,
+      timeToBuild: days,
+      isUpgraded: false,
+      description: "",
+      availableOrders: [],
+      notes: `Build cost: ${cost} GP, build time: ${days} days`,
+      hirelings: 0,
+    };
+  }
+
+  private createCustomSpecialFacility(name: string): BasilionFacility {
+    return {
+      id: `facility-${Date.now()}-${Math.floor(Math.random() * 100000)}`,
+      name,
+      type: "special",
+      spaceType: "Roomy",
+      size: 16,
+      isUpgraded: false,
+      description: "",
+      availableOrders: [],
+      notes: "Custom special facility (no build cost)",
+      hirelings: 1,
+    };
+  }
+
+  private createStarterBasicFacility(
+    name: string,
+    spaceType: "Cramped" | "Roomy",
+    size: number
+  ): BasilionFacility {
+    return {
+      id: `facility-${Date.now()}-${Math.floor(Math.random() * 100000)}`,
+      name,
+      type: "basic",
+      spaceType,
+      size,
+      isUpgraded: false,
+      description: "",
+      availableOrders: [],
+      notes: "Starter facility (free at bastion creation)",
+      hirelings: 0,
+    };
+  }
+
+  private displayCreationWizard(): void {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.createEl("h2", { text: `Create Bastion (${this.creationStep}/4)` });
+
+    if (!this.bastion) return;
+
+    if (this.creationStep === 1) {
+      const section = contentEl.createEl("div", { cls: "bastion-modal-section" });
+
+      new Setting(section)
+        .setName("Bastion Name")
+        .addText((text) =>
+          text.setValue(this.bastion?.name || "").onChange((value) => {
+            if (this.bastion) this.bastion.name = value;
+          })
+        );
+
+      new Setting(section)
+        .setName("Character Name")
+        .addText((text) =>
+          text.setValue(this.bastion?.characterName || "").onChange((value) => {
+            if (this.bastion) this.bastion.characterName = value;
+          })
+        );
+
+      new Setting(section)
+        .setName("Level")
+        .addText((text) =>
+          text.setValue(String(this.bastion?.level || 5)).onChange((value) => {
+            const parsed = parseInt(value, 10);
+            if (this.bastion && Number.isFinite(parsed)) {
+              this.bastion.level = Math.max(1, Math.min(20, parsed));
+            }
+          })
+        );
+
+      new Setting(section)
+        .setName("Description")
+        .addTextArea((text) =>
+          text.setValue(this.bastion?.description || "").onChange((value) => {
+            if (this.bastion) this.bastion.description = value;
+          })
+        );
+    }
+
+    if (this.creationStep === 2) {
+      const section = contentEl.createEl("div", { cls: "bastion-modal-section" });
+      section.createEl("p", {
+        text: "Choose exactly two starter basic facilities: one Cramped and one Roomy.",
+      });
+      section.createEl("p", { text: "Starter facilities are free at creation." });
+
+      const sizeReference = section.createEl("div", { cls: "bastion-facility-select" });
+      const markdownTable = [
+        "| Space | Maximum Area |",
+        "| --- | --- |",
+        "| Cramped | 4 squares |",
+        "| Roomy | 16 squares |",
+        "| Vast | 36 squares |",
+      ].join("\n");
+      void MarkdownRenderer.renderMarkdown(markdownTable, sizeReference, "", this.plugin);
+
+      const basicNames = ["Bedroom", "Dining Room", "Parlor", "Courtyard", "Kitchen", "Storage"];
+
+      new Setting(section)
+        .setName("Cramped facility (required)")
+        .addDropdown((dropdown) => {
+          basicNames.forEach((name) => dropdown.addOption(name, name));
+          dropdown.setValue(this.starterCrampedName);
+          dropdown.onChange((value) => {
+            this.starterCrampedName = value;
+          });
+        });
+
+      new Setting(section)
+        .setName("Roomy facility (required)")
+        .addDropdown((dropdown) => {
+          basicNames.forEach((name) => dropdown.addOption(name, name));
+          dropdown.setValue(this.starterRoomyName);
+          dropdown.onChange((value) => {
+            this.starterRoomyName = value;
+          });
+        });
+    }
+
+    if (this.creationStep === 3) {
+      const section = contentEl.createEl("div", { cls: "bastion-modal-section" });
+
+      new Setting(section)
+        .setName("Bastion Defenders")
+        .addText((text) =>
+          text.setValue(String(this.bastion?.defenders || 0)).onChange((value) => {
+            const parsed = parseInt(value, 10);
+            if (this.bastion) this.bastion.defenders = Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+          })
+        );
+
+      new Setting(section)
+        .setName("Gold (gp)")
+        .addText((text) =>
+          text.setValue(String(this.bastion?.gold || 0)).onChange((value) => {
+            const parsed = parseInt(value, 10);
+            if (this.bastion) this.bastion.gold = Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+          })
+        );
+
+    }
+
+    if (this.creationStep === 4) {
+      const section = contentEl.createEl("div", { cls: "bastion-modal-section" });
+
+      const summary = section.createEl("div", { cls: "bastion-facility-select" });
+      summary.createEl("p", { text: `Name: ${this.bastion.name || "(unnamed)"}` });
+      summary.createEl("p", { text: `Character: ${this.bastion.characterName || "(none)"}` });
+      summary.createEl("p", { text: `Level: ${this.bastion.level}` });
+      summary.createEl("p", { text: `Defenders: ${this.bastion.defenders}` });
+      summary.createEl("p", { text: `Gold: ${this.bastion.gold} gp` });
+      summary.createEl("p", {
+        text: `Starter basic facilities: ${this.starterCrampedName} (Cramped), ${this.starterRoomyName} (Roomy)`,
+      });
+    }
+
+    const buttonSection = contentEl.createEl("div", { cls: "bastion-modal-buttons" });
+    if (this.creationStep > 1) {
+      buttonSection.createEl("button", { cls: "bastion-btn-secondary", text: "Back" }).onclick = () => {
+        this.creationStep -= 1;
+        this.displayCreationWizard();
+      };
+    }
+
+    if (this.creationStep < 4) {
+      buttonSection.createEl("button", { cls: "bastion-btn-primary", text: "Next" }).onclick = () => {
+        if (this.creationStep === 1 && !this.bastion?.name.trim()) {
+          new Notice("Please enter a Bastion name to continue.");
+          return;
+        }
+        this.creationStep += 1;
+        this.displayCreationWizard();
+      };
+    } else {
+      buttonSection.createEl("button", { cls: "bastion-btn-primary", text: "Create Bastion" }).onclick = () => {
+        if (!this.bastion) return;
+        this.bastion.facilities = [
+          this.createStarterBasicFacility(this.starterCrampedName, "Cramped", 4),
+          this.createStarterBasicFacility(this.starterRoomyName, "Roomy", 16),
+        ];
+        this.bastion.lastUpdated = Date.now();
+        this.onSave(this.bastion);
+        this.close();
+      };
+    }
 
     buttonSection.createEl("button", { cls: "bastion-btn-secondary", text: "Cancel" }).onclick = () => {
       this.close();
