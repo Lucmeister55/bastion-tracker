@@ -1,99 +1,101 @@
-import {App, Editor, MarkdownView, Modal, Notice, Plugin} from 'obsidian';
-import {DEFAULT_SETTINGS, MyPluginSettings, SampleSettingTab} from "./settings";
+import { Plugin, Notice } from "obsidian";
+import { BastionDataManager } from "./data-manager";
+import { BastionView, BASTION_VIEW_TYPE } from "./views/bastion-view";
+import { BastionSettingsTab } from "./settings-tab";
+import { BastionModal } from "./modals/bastion-modal";
+import { BastionTurnModal } from "./modals/bastion-turn-modal";
 
-// Remember to rename these classes and interfaces!
-
-export default class MyPlugin extends Plugin {
-	settings: MyPluginSettings;
+export default class BastionPlugin extends Plugin {
+	dataManager: BastionDataManager;
 
 	async onload() {
-		await this.loadSettings();
+		// Initialize data manager
+		this.dataManager = new BastionDataManager(this);
+		await this.dataManager.loadSettings();
 
-		// This creates an icon in the left ribbon.
-		this.addRibbonIcon('dice', 'Sample', (evt: MouseEvent) => {
-			// Called when the user clicks the icon.
-			new Notice('This is a notice!');
+		// Register the bastion view
+		this.registerView(BASTION_VIEW_TYPE, (leaf) => new BastionView(leaf, this));
+
+		// Add settings tab
+		this.addSettingTab(new BastionSettingsTab(this.app, this));
+
+		// Add ribbon icon to open bastion view
+		this.addRibbonIcon("crown", "Bastions", async () => {
+			this.activateBastionView();
 		});
 
-		// This adds a status bar item to the bottom of the app. Does not work on mobile apps.
-		const statusBarItemEl = this.addStatusBarItem();
-		statusBarItemEl.setText('Status bar text');
-
-		// This adds a simple command that can be triggered anywhere
+		// Commands
 		this.addCommand({
-			id: 'open-modal-simple',
-			name: 'Open modal (simple)',
-			callback: () => {
-				new SampleModal(this.app).open();
-			}
+			id: "bastion-open-view",
+			name: "Open Bastions",
+			callback: () => this.activateBastionView(),
 		});
-		// This adds an editor command that can perform some operation on the current editor instance
-		this.addCommand({
-			id: 'replace-selected',
-			name: 'Replace selected content',
-			editorCallback: (editor: Editor, view: MarkdownView) => {
-				editor.replaceSelection('Sample editor command');
-			}
-		});
-		// This adds a complex command that can check whether the current state of the app allows execution of the command
-		this.addCommand({
-			id: 'open-modal-complex',
-			name: 'Open modal (complex)',
-			checkCallback: (checking: boolean) => {
-				// Conditions to check
-				const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
-				if (markdownView) {
-					// If checking is true, we're simply "checking" if the command can be run.
-					// If checking is false, then we want to actually perform the operation.
-					if (!checking) {
-						new SampleModal(this.app).open();
-					}
 
-					// This command will only show up in Command Palette when the check function returns true
-					return true;
-				}
-				return false;
+		this.addCommand({
+			id: "bastion-create-new",
+			name: "Create new bastion",
+			callback: () => this.openBastionModal(),
+		});
+
+		this.addCommand({
+			id: "bastion-export-data",
+			name: "Export bastion data",
+			callback: () => this.exportBastionData(),
+		});
+
+		// Auto-open view on load
+		this.app.workspace.onLayoutReady(() => {
+			if (this.app.workspace.getLeavesOfType(BASTION_VIEW_TYPE).length === 0) {
+				this.activateBastionView();
 			}
 		});
 
-		// This adds a settings tab so the user can configure various aspects of the plugin
-		this.addSettingTab(new SampleSettingTab(this.app, this));
-
-		// If the plugin hooks up any global DOM events (on parts of the app that doesn't belong to this plugin)
-		// Using this function will automatically remove the event listener when this plugin is disabled.
-		this.registerDomEvent(document, 'click', (evt: MouseEvent) => {
-			new Notice("Click");
-		});
-
-		// When registering intervals, this function will automatically clear the interval when the plugin is disabled.
-		this.registerInterval(window.setInterval(() => console.log('setInterval'), 5 * 60 * 1000));
-
+		console.log("Bastion Plugin loaded");
 	}
 
 	onunload() {
+		console.log("Bastion Plugin unloaded");
 	}
 
-	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData() as Partial<MyPluginSettings>);
+	async activateBastionView() {
+		const { workspace } = this.app;
+
+		let leaf = workspace.getLeavesOfType(BASTION_VIEW_TYPE)[0];
+
+		if (!leaf) {
+			leaf = workspace.getRightLeaf(false) ?? undefined;
+			if (leaf) await leaf.setViewState({ type: BASTION_VIEW_TYPE, active: true });
+		}
+
+		workspace.revealLeaf(leaf!);
 	}
 
-	async saveSettings() {
-		await this.saveData(this.settings);
-	}
-}
-
-class SampleModal extends Modal {
-	constructor(app: App) {
-		super(app);
+	openBastionModal(bastionId?: string) {
+		new BastionModal(this.app, this, bastionId).open();
 	}
 
-	onOpen() {
-		let {contentEl} = this;
-		contentEl.setText('Woah!');
+	openBastionTurnModal(bastionId: string) {
+		new BastionTurnModal(this.app, this, bastionId).open();
 	}
 
-	onClose() {
-		const {contentEl} = this;
-		contentEl.empty();
+	refreshBastionView() {
+		const leaves = this.app.workspace.getLeavesOfType(BASTION_VIEW_TYPE);
+		leaves.forEach((leaf) => {
+			if (leaf.view instanceof BastionView) {
+				leaf.view.render();
+			}
+		});
+	}
+
+	async exportBastionData() {
+		const data = JSON.stringify(this.dataManager.getSettings().bastions, null, 2);
+		const blob = new Blob([data], { type: "application/json" });
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement("a");
+		a.href = url;
+		a.download = `bastions-${Date.now()}.json`;
+		a.click();
+		URL.revokeObjectURL(url);
+		new Notice("Bastion data exported!");
 	}
 }
